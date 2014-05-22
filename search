@@ -1,0 +1,84 @@
+#!/usr/bin/env perl
+use Mojolicious::Lite;
+use Mojo::UserAgent;
+
+get '/' => sub {
+  my $self = shift;
+  $self->render('index');
+};
+
+get '/search' => sub {
+  my $self = shift;
+  my $q = $self->param('q');
+  my $lucky = $self->param('lucky');
+
+  my @searches = qw(some random words);
+
+	if ($lucky) {
+		$q = $searches[rand @searches];
+	}
+
+	$q = lc $q;
+	$q =~ s![\+\s]!+AND+!g;
+
+	my $ua = Mojo::UserAgent->new;
+	my $json;
+	my $tx = $ua->get("http://localhost:9200/twitter/tweet/_search?q=text:$q&default_operator=AND&size=50");
+	if (my $res = $tx->success) {
+		$json = $res->json;
+	}
+	$q =~ s!\+AND\+! !g;
+
+	$self->render('search', json_res => $json, q => $q);
+};
+
+app->start;
+__DATA__
+
+@@ index.html.ep
+% layout 'default';
+% title 'Search for something';
+<h1>Search!</h1>
+<form action="/search" role="form" class="form-horizontal">
+	<div class="col-sm-6">
+		<input type="text" name="q" placeholder="search" class="form-control">
+	</div>
+	<button type="submit" class="btn btn-primary">Search</button>
+	<a href="/search?lucky=1" class="btn">I'm feeling lucky!</a>
+</form>
+
+@@ search.html.ep
+% layout 'default';
+% title 'Search results';
+
+<form action="/search" role="form" class="form-horizontal">
+	<div class="col-sm-6">
+		<input type="text" name="q" placeholder="search" class="form-control" value="<%= $q %>">
+	</div>
+	<button type="submit" class="btn btn-primary">Search</button>
+	<a href="/search?lucky=1" class="btn">I'm feeling lucky!</a>
+</form>
+<p><%= $json_res->{'hits'}->{'total'} %> results for <%= $q %></p>
+<ol>
+% for my $res (@{$json_res->{hits}->{hits}}) {
+	<li style="margin-bottom:15px"><a href="https://twitter.com/<%=$res->{_source}->{screen_name}%>">@<%= $res->{_source}->{screen_name} %></a> said:<br>
+	<span style="margin-left:10px">
+		%== $res->{_source}->{text}
+	</span><br>
+		<span style="color:gray">Posted on <%= $res->{_source}->{orig_created_at} %></span>
+		<a href="https://twitter.com/<%=$res->{_source}->{screen_name}%>/status/<%=$res->{_id}%>">link</a><br>
+	</li>
+% }
+</ol>
+
+
+@@ layouts/default.html.ep
+<!DOCTYPE html>
+<html>
+  <head>
+  <title><%= title %></title>
+  <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+  <script src="//netdna.bootstrapcdn.com/bootstrap/3.1.1/js/bootstrap.min.js"></script>
+  </head>
+  <body><%= content %></body>
+</html>
